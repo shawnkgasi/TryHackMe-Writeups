@@ -35,5 +35,5 @@ In accordance with TryHackMe's write-up guidelines:
 ## 📈 Badges & Progress
 
 My TryHackMe Profile:
-https://tryhackme.com/ShawnMs
+https://tryhackme.com/p/ShawnMs
 
