@@ -1,6 +1,6 @@
 # TryHackMe (THM) Walkthroughs & Write-ups 🏴‍☠️
 
-Welcome to my repository containing detailed walkthroughs, notes, and methodology for rooms completed on [TryHackMe](https://tryhackme.com). This repo serves as a personal documentation hub and a showcase of my hands-on cybersecurity skills.
+Welcome to my repository containing detailed walkthroughs, notes, and methodology for rooms I have completed on [TryHackMe](https://tryhackme.com). This repo serves as a personal documentation hub and a showcase of my hands-on cybersecurity skills.
 
 ## 🚀 Repository Structure
 
