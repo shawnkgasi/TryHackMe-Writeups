@@ -95,9 +95,9 @@ meterpreter > getsystem
 Navigating inside `C:\Users\Nekrotic\Desktop\`, both system files were located and read:
 
 *   **User Flag:** `C:\Users\Nekrotic\Desktop\user.txt`  
-    *   *Value:* `THM{REDACTED_USER_FLATLINE_HASH}`
+
 *   **Root Flag:** `C:\Users\Nekrotic\Desktop\root.txt`  
-    *   *Value:* `THM{REDACTED_ROOT_FLATLINE_HASH}`
+
 
 ---
 
